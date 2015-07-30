@@ -70,6 +70,10 @@ library
                  , monad-logger
                  , fast-logger
                  , wai-logger                    >= 2.2        && < 2.3
+                 , pam
+                 , conduit-extra
+                 , random
+                 , http-conduit
 
     -- see https://github.com/yesodweb/yesod/issues/814
     if !os(windows)
