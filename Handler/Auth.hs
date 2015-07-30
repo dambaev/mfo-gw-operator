@@ -85,17 +85,21 @@ checkLogin = do
 
 checkVerify:: HandlerT Auth (HandlerT App IO) Value
 checkVerify = do
-    mreqpin <- lookupGetParam "pin"
-    mpin <- lookupSession "pin"
-    case (mpin, mreqpin) of
-        (Just pin, Just reqpin) | reqpin == pin -> do
-            mlogin <- lookupSession "login" 
-            eret <- do
-                    lift $ setCreds False $ Creds "amqp" operatorUUID []
-                    return $ toJSON resp
+        mreqpin <- lookupGetParam "pin"
+        mpin <- lookupSession "pin"
+        case (mpin, mreqpin) of
+                (Just pin, Just reqpin) | reqpin == pin -> do
+                        mlogin <- lookupSession "login" 
+                        case mlogin of
+                             Nothing -> notFound
+                             Just login -> do
+                                lift $ setCreds False $ Creds "mfo" login []
+                                return $ object
+                                        [ "status" .= ("OK:: Text)
+                                        ]
         _ -> notFound
 
-processLoginRequest:: Result OperatorGWRequest 
+{- processLoginRequest:: Result OperatorGWRequest 
                    -> HandlerT Auth (HandlerT App IO) Value
 processLoginRequest (Success loginRequest@(OperatorLogin {..})) = do
     eret <- lift $ stdCall "gw.operator.session.login" loginRequest
@@ -106,7 +110,7 @@ processLoginRequest (Success loginRequest@(OperatorLogin {..})) = do
                 , "comment" .= descr
                 ]
         Right resp@(OperatorLoggedIn {..}) -> do
-            lift $ setCreds False $ Creds "amqp" operatorUUID []
+            lift $ setCreds False $ Creds "mfo" operatorUUID []
             return $ toJSON resp
         Right some ->
             return $ object
@@ -119,7 +123,8 @@ processLoginRequest (Error string) = do
         , "comment" .= string
         ]
 
-
+        -} 
+        
 getNewPin:: IO Text
 getNewPin = do
     nums <- forM [1..6] $ \_ -> randomRIO (1,9)::IO Int
