@@ -1,0 +1,33 @@
+# NOTE: These settings can be overridden by environment variables as well, in
+# particular:
+#
+#    PGHOST
+#    PGPORT
+#    PGUSER
+#    PGPASS
+#    PGDATABASE
+
+Default: &defaults
+  user: gw-operator
+  password: gw-operator
+  host: localhost
+  port: 5432
+  database: gw-operator
+  poolsize: 10
+
+Development:
+  <<: *defaults
+
+Testing:
+  database: gw-operator_test
+  <<: *defaults
+
+Staging:
+  database: gw-operator_staging
+  poolsize: 100
+  <<: *defaults
+
+Production:
+  database: gw-operator_production
+  poolsize: 100
+  <<: *defaults
