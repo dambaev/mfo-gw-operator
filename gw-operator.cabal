@@ -74,6 +74,7 @@ library
                  , conduit-extra
                  , random
                  , http-conduit
+                 , wai-conduit
 
     -- see https://github.com/yesodweb/yesod/issues/814
     if !os(windows)
