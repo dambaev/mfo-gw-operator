@@ -8,11 +8,11 @@
 #    PGDATABASE
 
 Default: &defaults
-  user: gw-operator
-  password: gw-operator
-  host: localhost
+  user: mfo
+  password: mfo
+  host: db
   port: 5432
-  database: gw-operator
+  database: gw_operator
   poolsize: 10
 
 Development:

@@ -19,6 +19,8 @@ import Data.List as L
 import Data.Maybe
 import Control.Monad
 import System.Posix.PAM as PAM
+import System.Process
+import System.Exit
 
 -- pam service
 service = "mfo-operator"
@@ -59,34 +61,40 @@ checkLogin:: HandlerT Auth (HandlerT App IO) Value
 checkLogin = do
     deleteSession "pin"
     deleteSession "login"
-    mlogin <- lookupGetParam "login"
-    mpassword <- lookupGetParam "password"
+    mlogin <- lookupPostParam "login"
+    mpassword <- lookupPostParam "password"
     liftIO $ print $ "login,pass=" ++ (show (mlogin, mpassword))
     case (mlogin, mpassword) of
         (Just login, Just password) -> do
-            eret <- lift $ PAM.authenticate service login password
+            eret <- liftIO $ PAM.authenticate service (T.unpack login) (T.unpack password)
             liftIO $ print $ show eret 
             case eret of
                 Right _ -> do
-                    pin <- liftIO $! getNewPin
-                    setSession "pin" pin
-                    setSession "login" login
-                    sendPin "dead" pin
-                    return $ -- toJSON $ OperatorNeedPin
-                        object
-                        [ "status" .= ("OK":: Text)
-                        ]
-                descr -> return $ object
-                    [ "status" .= ("Error" ::Text)
-                    , "comment" .= descr
-                    ]
+                    etel <- liftIO $! getUserTelephone login
+                    case etel of
+                         Left reason -> do
+                             liftIO $ print reason
+                             badMethod
+                         Right tel -> do
+                             pin <- liftIO $! getNewPin
+                             setSession "pin" pin
+                             setSession "login" login
+                             sendPin tel pin
+                             return $ -- toJSON $ OperatorNeedPin
+                                object
+                                [ "status" .= ("OK":: Text)
+                                ]
+                Left descr -> badMethod
         _ -> badMethod
 
 
 checkVerify:: HandlerT Auth (HandlerT App IO) Value
 checkVerify = do
-    mreqpin <- lookupGetParam "pin"
+    mreqpin <- lookupPostParam "pin"
     mpin <- lookupSession "pin"
+    liftIO $ print $ "(mpin,mpib) = " ++ show (mreqpin, mpin)
+    sess <- getSession
+    liftIO $ print $ sess
     case (mpin, mreqpin) of
         (Just pin, Just reqpin) | reqpin == pin -> do
             mlogin <- lookupSession "login" 
@@ -97,7 +105,7 @@ checkVerify = do
                 return $ object
                     [ "status" .= ("OK":: Text)
                     ]
-        _ -> notFound
+        _ -> badMethod
 
 {- processLoginRequest:: Result OperatorGWRequest 
                    -> HandlerT Auth (HandlerT App IO) Value
@@ -124,7 +132,7 @@ processLoginRequest (Error string) = do
         ]
 
         -} 
-        
+
 getNewPin:: IO Text
 getNewPin = do
     nums <- forM [1..6] $ \_ -> randomRIO (1,9)::IO Int
@@ -136,5 +144,20 @@ getNewPin = do
 
 sendPin:: Text-> Text-> HandlerT Auth (HandlerT App IO) ()
 sendPin mobile pin = do
-    liftIO $! Import.putStrLn $ "generated pin = " ++  show pin
+    liftIO $! do
+        Import.putStrLn $ "generated pin = " ++  show pin
+        Import.putStrLn $ "for telephone = " ++  show mobile
 
+getUserTelephone:: Text-> IO (Either Text Text)
+getUserTelephone login = do
+    (code, stdout, stderr) <- readProcessWithExitCode 
+        ("getent")
+        ["passwd", (T.unpack login)]
+        ""
+    case code of
+         _ | code /= ExitSuccess || L.length stdout < 1-> return $ Left $ T.pack stderr
+         _ -> do
+             let splitted = T.splitOn "," $! (T.pack stdout)
+             if L.length splitted < 3
+                then return $ Left "no telephone"
+                else return $ Right $! splitted !! 2
