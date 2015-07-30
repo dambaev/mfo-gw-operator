@@ -31,21 +31,21 @@ instance YesodAuth App where
  
     loginDest _ = HomeR
     logoutDest _ = HomeR
-    authPlugins _ = [ authAMQP]
+    authPlugins _ = [ authPAM]
     authHttpManager = httpManager
 
     maybeAuthId = lookupSession "gwID"
 
 
 authPAM:: AuthPlugin App
-authPAM = AuthPlugin "amqp" dispatch (\_ ->badMethod)
+authPAM = AuthPlugin "mfo" dispatch (\_ ->badMethod)
     where
     dispatch "POST" ["login"] = checkLogin >>= sendResponse
     dispatch "POST" ["verify"] = checkVerify >>= sendResponse
     dispatch _ _ = notFound
 
 postLoginR:: AuthRoute
-postLoginR = PluginR "amqp" ["login"]
+postLoginR = PluginR "mfo" ["login"]
 
 getJSONRequest:: FromJSON a => HandlerT Auth (HandlerT App IO) (Result a)
 getJSONRequest = do
