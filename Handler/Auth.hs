@@ -85,18 +85,18 @@ checkLogin = do
 
 checkVerify:: HandlerT Auth (HandlerT App IO) Value
 checkVerify = do
-        mreqpin <- lookupGetParam "pin"
-        mpin <- lookupSession "pin"
-        case (mpin, mreqpin) of
-                (Just pin, Just reqpin) | reqpin == pin -> do
-                        mlogin <- lookupSession "login" 
-                        case mlogin of
-                             Nothing -> notFound
-                             Just login -> do
-                                lift $ setCreds False $ Creds "mfo" login []
-                                return $ object
-                                        [ "status" .= ("OK:: Text)
-                                        ]
+    mreqpin <- lookupGetParam "pin"
+    mpin <- lookupSession "pin"
+    case (mpin, mreqpin) of
+        (Just pin, Just reqpin) | reqpin == pin -> do
+            mlogin <- lookupSession "login" 
+            case mlogin of
+                Nothing -> notFound
+                Just login -> do
+                lift $ setCreds False $ Creds "mfo" login []
+                return $ object
+                    [ "status" .= ("OK":: Text)
+                    ]
         _ -> notFound
 
 {- processLoginRequest:: Result OperatorGWRequest 
@@ -136,5 +136,5 @@ getNewPin = do
 
 sendPin:: Text-> Text-> HandlerT Auth (HandlerT App IO) ()
 sendPin mobile pin = do
-    liftIO $! putStrLn $ "generated pin = " ++  show pin
+    liftIO $! Import.putStrLn $ "generated pin = " ++  show pin
 
