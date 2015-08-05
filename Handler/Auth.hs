@@ -1,10 +1,11 @@
-{-#LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Handler.Auth where
 
-import Import
+-- import Import
 
+import Yesod
 import Yesod.Auth
 import Data.Aeson
 import Data.Aeson.Parser
@@ -21,25 +22,15 @@ import Control.Monad
 import System.Posix.PAM as PAM
 import System.Process
 import System.Exit
+import Prelude as P
+import Codec.MFO.API.Operator
+import Codec.JSON.RPC
+import Data.ByteString.UTF8 as BU8
 
 -- pam service
 service = "mfo-operator"
 
-instance YesodAuth App where
-    type AuthId App = Text
-    
-   
-    getAuthId = return . Just . credsIdent
- 
-    loginDest _ = HomeR
-    logoutDest _ = HomeR
-    authPlugins _ = [ authPAM]
-    authHttpManager = httpManager
-
-    maybeAuthId = lookupSession "gwID"
-
-
-authPAM:: AuthPlugin App
+authPAM:: AuthPlugin site
 authPAM = AuthPlugin "mfo" dispatch (\_ ->badMethod)
     where
     dispatch "POST" ["login"] = checkLogin >>= sendResponse
@@ -49,64 +40,53 @@ authPAM = AuthPlugin "mfo" dispatch (\_ ->badMethod)
 postLoginR:: AuthRoute
 postLoginR = PluginR "mfo" ["login"]
 
-getJSONRequest:: FromJSON a => HandlerT Auth (HandlerT App IO) (Result a)
-getJSONRequest = do
-    yesodReq <- getRequest
-    let request = reqWaiRequest yesodReq
-    value' <- sourceRequestBody request $$ sinkParser json
-    liftIO $ print $ show value'
-    return $! fromJSON value'
-
-checkLogin:: HandlerT Auth (HandlerT App IO) Value
+checkLogin:: HandlerT Auth (HandlerT site IO) Value
 checkLogin = do
-    deleteSession "pin"
-    deleteSession "login"
-    mlogin <- lookupPostParam "login"
-    mpassword <- lookupPostParam "password"
-    liftIO $ print $ "login,pass=" ++ (show (mlogin, mpassword))
-    case (mlogin, mpassword) of
-        (Just login, Just password) -> do
-            eret <- liftIO $ PAM.authenticate service (T.unpack login) (T.unpack password)
+    clearSession
+    req <- getJSONRequest
+    case req of
+        Error reason -> return $! toJSON $! OAAError $! E.decodeUtf8 $! 
+             BU8.fromString reason
+        Success (ORALogin {..}) -> do
+            liftIO $ print $ "login,pass=" ++ (show (oraLogin, oraPassword))
+            eret <- liftIO $ PAM.authenticate service (T.unpack oraLogin) (T.unpack oraPassword)
             liftIO $ print $ show eret 
             case eret of
                 Right _ -> do
-                    etel <- liftIO $! getUserTelephone login
+                    etel <- liftIO $! getUserTelephone oraLogin
                     case etel of
                          Left reason -> do
                              liftIO $ print reason
-                             badMethod
-                         Right tel -> do
+                             return $! toJSON $! OAAError reason
+                         Right (fname, tel) -> do
                              pin <- liftIO $! getNewPin
                              setSession "pin" pin
-                             setSession "login" login
+                             setSession "login" oraLogin
+                             setSession "fullname" fname
                              sendPin tel pin
-                             return $ -- toJSON $ OperatorNeedPin
-                                object
-                                [ "status" .= ("OK":: Text)
-                                ]
+                             return $ toJSON $ OAANeedPin
                 Left descr -> badMethod
-        _ -> badMethod
+        _ -> return $! toJSON $! OAAError "bad request"
 
 
-checkVerify:: HandlerT Auth (HandlerT App IO) Value
+checkVerify:: YesodAuth site => HandlerT Auth (HandlerT site IO) Value
 checkVerify = do
-    mreqpin <- lookupPostParam "pin"
     mpin <- lookupSession "pin"
-    liftIO $ print $ "(mpin,mpib) = " ++ show (mreqpin, mpin)
-    sess <- getSession
-    liftIO $ print $ sess
-    case (mpin, mreqpin) of
-        (Just pin, Just reqpin) | reqpin == pin -> do
+    req <- getJSONRequest
+    case (req,mpin) of
+        (Error reason, _)-> return $! toJSON $! OAAError $! E.decodeUtf8 $!
+             BU8.fromString reason
+        (_, Nothing)-> return $! toJSON $! OAAError $! "need pin"
+        (Success ORAPin {..}, Just pin) | oraPin == pin -> do
+            liftIO $ print $ "(mreqpin,mpin) = " ++ show (oraPin, pin)
             mlogin <- lookupSession "login" 
+            Just fname <- lookupSession "fullname"
             case mlogin of
-                Nothing -> notFound
+                Nothing -> return $! toJSON $! OAAError $! "corrupt session"
                 Just login -> do
                 lift $ setCreds False $ Creds "mfo" login []
-                return $ object
-                    [ "status" .= ("OK":: Text)
-                    ]
-        _ -> badMethod
-
+                return $! toJSON $! OAALoggedIn fname
+        _ -> return $! toJSON $! OAAError $! "bad request"
 {- processLoginRequest:: Result OperatorGWRequest 
                    -> HandlerT Auth (HandlerT App IO) Value
 processLoginRequest (Success loginRequest@(OperatorLogin {..})) = do
@@ -142,13 +122,13 @@ getNewPin = do
 
 
 
-sendPin:: Text-> Text-> HandlerT Auth (HandlerT App IO) ()
+sendPin:: Text-> Text-> HandlerT Auth (HandlerT site IO) ()
 sendPin mobile pin = do
     liftIO $! do
-        Import.putStrLn $ "generated pin = " ++  show pin
-        Import.putStrLn $ "for telephone = " ++  show mobile
+        P.putStrLn $ "generated pin = " ++  show pin
+        P.putStrLn $ "for telephone = " ++  show mobile
 
-getUserTelephone:: Text-> IO (Either Text Text)
+getUserTelephone:: Text-> IO (Either Text (Text, Text))
 getUserTelephone login = do
     (code, stdout, stderr) <- readProcessWithExitCode 
         ("getent")
@@ -160,4 +140,4 @@ getUserTelephone login = do
              let splitted = T.splitOn "," $! (T.pack stdout)
              if L.length splitted < 3
                 then return $ Left "no telephone"
-                else return $ Right $! splitted !! 2
+                else return $ Right $! (splitted !! 0, splitted !! 2)

@@ -21,6 +21,7 @@ library
                      Settings.Development
                      Handler.Home
                      Handler.Auth
+                     Util.AAA
 
     if flag(dev) || flag(library-only)
         cpp-options:   -DDEVELOPMENT
@@ -76,6 +77,9 @@ library
                  , http-conduit
                  , wai-conduit
                  , process
+                 , utf8-string
+                 , api-operator
+                 , jsonrpc
 
     -- see https://github.com/yesodweb/yesod/issues/814
     if !os(windows)

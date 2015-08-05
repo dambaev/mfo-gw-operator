@@ -99,3 +99,5 @@ getApplicationDev =
     loader = Yesod.Default.Config.loadConfig (configSettings Development)
         { csParseExtra = parseExtra
         }
+
+

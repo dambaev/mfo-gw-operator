@@ -1,3 +1,6 @@
+{-#LANGUAGE RankNTypes #-}
+{-#LANGUAGE BangPatterns #-}
+{-#LANGUAGE OverloadedStrings #-}
 module Foundation where
 
 import Prelude
@@ -18,6 +21,10 @@ import Model
 import Text.Jasmine (minifym)
 import Text.Hamlet (hamletFile)
 import Yesod.Core.Types (Logger)
+import Util.AAA
+import Data.Text as T
+import Handler.Auth
+import Data.List as DL
 
 -- | The site argument for your application. This can be a good place to
 -- keep settings and values requiring initialization before your application
@@ -31,6 +38,8 @@ data App = App
     , persistConfig :: Settings.PersistConf
     , appLogger :: Logger
     }
+
+
 
 instance HasHttpManager App where
     getHttpManager = httpManager
@@ -88,6 +97,7 @@ instance Yesod App where
     isAuthorized (AuthR _) _ = return Authorized
     isAuthorized FaviconR _ = return Authorized
     isAuthorized RobotsR _ = return Authorized
+    isAuthorized HomeR _ = requireGroup "acl_gw_operator"
     -- Default to Authorized for now.
     isAuthorized _ _ = return Authorized
 
@@ -120,6 +130,19 @@ instance YesodPersist App where
 instance YesodPersistRunner App where
     getDBRunner = defaultGetDBRunner connPool
 
+instance YesodAuth App where
+    type AuthId App = Text
+
+    getAuthId = return . Just . credsIdent
+ 
+    loginDest _ = HomeR
+    logoutDest _ = HomeR
+    authPlugins _ = [ authPAM]
+    authHttpManager = httpManager
+
+    maybeAuthId = lookupSession "_ID"
+
+    
 {- instance YesodAuth App where
     type AuthId App = UserId
 
@@ -162,3 +185,18 @@ getExtra = fmap (appExtra . settings) getYesod
 -- wiki:
 --
 -- https://github.com/yesodweb/yesod/wiki/Sending-email
+
+
+{-| Authorize user only if he is member of group
+ -
+ -}
+requireGroup:: Text-> HandlerT App IO AuthResult
+requireGroup group = do
+    login <- requireAuthId
+    !egroups <- liftIO $! getUserGroups login
+    case egroups of
+         Left reason -> return $ Unauthorized reason
+         Right groups -> do
+            if DL.any (== group) groups
+                then return $ Authorized
+                else return $! Unauthorized $! "not in group " `T.append` group
