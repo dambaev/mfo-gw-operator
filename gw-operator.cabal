@@ -21,6 +21,7 @@ library
                      Settings.Development
                      Handler.Home
                      Handler.Auth
+                     Handler.News
                      Util.AAA
 
     if flag(dev) || flag(library-only)
@@ -80,6 +81,7 @@ library
                  , utf8-string
                  , api-operator
                  , jsonrpc
+                 , time
 
     -- see https://github.com/yesodweb/yesod/issues/814
     if !os(windows)

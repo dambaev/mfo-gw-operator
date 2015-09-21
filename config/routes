@@ -6,3 +6,7 @@
 
 / HomeR GET
 
+/news NewsR GET POST
+/news/#NewsItemId GetNewsR GET
+/news/delete/#NewsItemId DeleteNewsR POST
+
